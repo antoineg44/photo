@@ -14,6 +14,87 @@ if ($path === null || !is_file($path)) {
     exit;
 }
 
+if ($type === 'player') {
+
+    if (!photo_is_video($path)) {
+        http_response_code(415);
+        exit;
+    }
+
+    $source = 'media.php?type=view&file='
+        . rawurlencode($file);
+
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: no-store');
+
+    ?>
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1">
+
+        <title>Lecture vidéo</title>
+
+        <style>
+            body {
+                margin: 0;
+                background: #111827;
+                color: white;
+                font-family: Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                min-height: 100vh;
+            }
+
+            h2 {
+                font-size: 16px;
+                padding: 15px;
+                overflow-wrap: anywhere;
+            }
+
+            video {
+                width: 95%;
+                max-height: 80vh;
+                background: black;
+            }
+
+            a {
+                color: white;
+                margin: 20px;
+            }
+        </style>
+    </head>
+
+    <body>
+
+        <h2><?= photo_e(basename($file)) ?></h2>
+
+        <video controls autoplay playsinline>
+            <source
+                src="<?= photo_e($source) ?>"
+                type="<?= photo_e([
+                    'mp4' => 'video/mp4',
+                    'webm' => 'video/webm',
+                    'ogv' => 'video/ogg'
+                ][strtolower(pathinfo($path, PATHINFO_EXTENSION))]) ?>"
+            >
+            Votre navigateur ne peut pas lire cette vidéo.
+        </video>
+
+        <a href="javascript:history.back()">
+            Retour à la galerie
+        </a>
+
+    </body>
+    </html>
+    <?php
+
+    exit;
+}
+
 if ($type === 'thumb') {
 
     if (!photo_is_image($path)) {
