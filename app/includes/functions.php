@@ -110,6 +110,19 @@ function photo_list(string $relative): array
             continue;
         }
 
+        // Masquer certains dossiers
+        if (
+            is_dir($path)
+            && in_array(
+                $name,
+                PHOTO_HIDDEN_DIRECTORIES,
+                true
+            )
+        ) {
+            continue;
+        }
+
+
         if (is_dir($path)) {
 
             $items[] = [
