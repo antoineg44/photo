@@ -38,6 +38,7 @@ function photo_e(string $valeur): string
 $identifiant = (string) (
     $_SESSION['utilisateur_identifiant'] ?? ''
 );
+$photoIdentifiant = $identifiant;
 
 $csrfToken = $_SESSION['csrf_token'] ?? '';
 
