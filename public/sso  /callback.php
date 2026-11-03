@@ -94,7 +94,7 @@ try {
         $pdo->rollBack();
         unset($_SESSION['sso_photo_pending']);
 
-        callbackErreur(403, 'Accès refusé : ce compte ne dispose pas des droits vidéo.');
+        callbackErreur(403, 'Accès refusé : ce compte ne dispose pas des droits photo.');
     }
 
     $requete = $pdo->prepare(
@@ -137,7 +137,7 @@ try {
 
     // Renouveler l'identifiant de session après authentification.
     if (!session_regenerate_id(true)) {
-        throw new RuntimeException('Impossible de renouveler la session vidéo.');
+        throw new RuntimeException('Impossible de renouveler la session photo.');
     }
 
     unset($_SESSION['sso_photo_pending']);
@@ -159,7 +159,7 @@ try {
         $pdo->rollBack();
     }
 
-    error_log('Erreur callback SSO vidéo : ' . $e->getMessage());
+    error_log('Erreur callback SSO photo : ' . $e->getMessage());
 
     http_response_code(500);
     exit('Une erreur technique est survenue pendant la connexion.');
