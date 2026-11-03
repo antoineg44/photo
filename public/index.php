@@ -186,111 +186,96 @@ $parts = $folder === ''
 
     <section class="galerie">
 
-        <?php if (empty($items)): ?>
+    <?php if (empty($items)): ?>
 
-            <p class="vide">
-                Aucun média dans ce répertoire.
-            </p>
+        <p class="vide">
+            Aucun média dans ce répertoire.
+        </p>
+
+    <?php endif; ?>
+
+    <?php foreach ($items as $item): ?>
+
+        <?php if ($item['type'] === 'directory'): ?>
+
+            <!-- DOSSIER -->
+
+            <div class="element dossier">
+
+                <a href="?dossier=<?= rawurlencode($item['path']) ?>"
+                   class="media-link">
+
+                    <div class="icone">📁</div>
+
+                    <div class="nom">
+                        <?= photo_e($item['name']) ?>
+                    </div>
+
+                </a>
+
+                <button
+                    type="button"
+                    class="download-folder"
+                    data-file="<?= photo_e($item['path']) ?>">
+
+                    ⬇ Télécharger le dossier
+
+                </button>
+
+            </div>
+
+        <?php else: ?>
+
+            <!-- FICHIER PHOTO OU VIDÉO -->
+
+            <div class="element media">
+
+                <a href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
+                   class="media-link"
+                   <?= $item['type'] === 'image'
+                       ? 'data-image="1"'
+                       : '' ?>>
+
+                    <?php if ($item['type'] === 'image'): ?>
+
+                        <img
+                            src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
+                            loading="lazy"
+                            alt="<?= photo_e($item['name']) ?>"
+                        >
+
+                    <?php else: ?>
+
+                        <div class="video-preview">
+                            <span>▶</span>
+                            <small>VIDÉO</small>
+                        </div>
+
+                    <?php endif; ?>
+
+                </a>
+
+                <div class="nom">
+                    <?= photo_e($item['name']) ?>
+                </div>
+
+                <!-- TÉLÉCHARGEMENT INDIVIDUEL -->
+
+                <?php
+                photo_bouton_telecharger(
+                    $item['path'],
+                    $csrfToken
+                );
+                ?>
+
+            </div>
 
         <?php endif; ?>
 
-        <?php foreach ($items as $item): ?>
+    <?php endforeach; ?>
 
-            <?php if ($item['type'] === 'directory'): ?>
+</section>
 
-    <div class="element dossier">
-
-        <a href="?dossier=<?= rawurlencode($item['path']) ?>"
-           class="media-link">
-
-            <div class="icone">📁</div>
-
-            <div class="nom">
-                <?= photo_e($item['name']) ?>
-            </div>
-
-        </a>
-
-        <button
-            type="button"
-            class="download-folder"
-            data-file="<?= photo_e($item['path']) ?>">
-            ⬇ Télécharger le dossier
-        </button>
-
-    </div>
-
-
-    <div class="element dossier">
-
-        <a href="?dossier=<?= rawurlencode($item['path']) ?>">
-
-            <div class="icone">📁</div>
-
-            <div class="nom">
-                <?= photo_e($item['name']) ?>
-            </div>
-
-        </a>
-
-        <?php
-        photo_bouton_telecharger(
-            $item['path'],
-            $csrfToken
-        );
-        ?>
-
-    </div>
-
-
-            <?php else: ?>
-
-                <div class="element media">
-
-                    <a href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
-                       class="media-link"
-                       <?= $item['type'] === 'image'
-                           ? 'data-image="1"'
-                           : '' ?>>
-
-                        <?php if ($item['type'] === 'image'): ?>
-
-                            <img
-                                src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
-                                loading="lazy"
-                                alt="<?= photo_e($item['name']) ?>"
-                            >
-
-                        <?php else: ?>
-
-                            <div class="video-preview">
-                                <span>▶</span>
-                                <small>VIDÉO</small>
-                            </div>
-
-                        <?php endif; ?>
-
-                    </a>
-
-                    <div class="nom">
-    <?= photo_e($item['name']) ?>
-</div>
-
-<?php
-photo_bouton_telecharger(
-    $item['path'],
-    $csrfToken
-);
-?>
-
-
-                </div>
-
-            <?php endif; ?>
-
-        <?php endforeach; ?>
-
-    </section>
 
 </main>
 
