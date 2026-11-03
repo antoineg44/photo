@@ -163,6 +163,39 @@ main {
     color: #777;
 }
 
+/* Formulaire de téléchargement */
+
+.form-telecharger {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.bouton-telecharger {
+    display: inline-block;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 7px;
+    background: #2563eb;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s;
+}
+
+.bouton-telecharger:hover {
+    background: #1d4ed8;
+}
+
+/* Dossiers */
+
+.dossier > a {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+}
+
+
 @media(max-width: 600px) {
 
     .galerie {
