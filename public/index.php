@@ -263,10 +263,11 @@ $parts = $folder === ''
                         <?php if ($item['type'] === 'image'): ?>
 
                             <img
-                                src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
-                                loading="lazy"
-                                alt="<?= photo_e($item['name']) ?>"
-                            >
+    src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
+    loading="lazy"
+    decoding="async"
+    alt="<?= photo_e($item['name']) ?>"
+>
 
                         <?php else: ?>
 
