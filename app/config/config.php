@@ -46,3 +46,8 @@ define('PHOTO_HIDDEN_DIRECTORIES', [
     'Archives privées',
     'A trier',
 ]);
+
+define(
+    'PHOTO_DIRECTORY_CACHE',
+    '/var/www/photo/cache/directories'
+);
