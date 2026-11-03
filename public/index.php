@@ -200,6 +200,29 @@ $parts = $folder === ''
 
     <div class="element dossier">
 
+        <a href="?dossier=<?= rawurlencode($item['path']) ?>"
+           class="media-link">
+
+            <div class="icone">📁</div>
+
+            <div class="nom">
+                <?= photo_e($item['name']) ?>
+            </div>
+
+        </a>
+
+        <button
+            type="button"
+            class="download-folder"
+            data-file="<?= photo_e($item['path']) ?>">
+            ⬇ Télécharger le dossier
+        </button>
+
+    </div>
+
+
+    <div class="element dossier">
+
         <a href="?dossier=<?= rawurlencode($item['path']) ?>">
 
             <div class="icone">📁</div>
@@ -284,6 +307,66 @@ photo_bouton_telecharger(
 </div>
 
 <script src="assets/js/app.js"></script>
+
+    <div id="zipProgress" class="zip-progress" hidden>
+
+    <h3>📦 Création de l'archive</h3>
+
+    <p id="zipMessage">Préparation...</p>
+
+    <progress id="zipBar" value="0" max="100"></progress>
+
+    <p id="zipPercent">0 %</p>
+
+    <p id="zipFiles">0 fichier</p>
+
+    <button type="button" id="cancelZip">
+        ✖ Annuler
+    </button>
+
+    <a id="downloadZip" hidden>
+        ⬇ Télécharger le ZIP
+    </a>
+
+</div>
+
+<style>
+.zip-progress {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    width: min(350px, calc(100% - 40px));
+    padding: 20px;
+    background: #1f2937;
+    color: white;
+    border-radius: 12px;
+    box-shadow: 0 5px 25px #0005;
+}
+
+.zip-progress progress {
+    width: 100%;
+    height: 18px;
+    margin: 12px 0;
+}
+
+.zip-progress button,
+.zip-progress a {
+    display: inline-block;
+    padding: 10px 15px;
+    margin-top: 10px;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #ef4444;
+    color: white;
+    text-decoration: none;
+}
+
+.zip-progress a {
+    background: #10b981;
+}
+</style>
 
 </body>
 </html>
