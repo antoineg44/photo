@@ -465,3 +465,15 @@ function photo_thumbnail(string $path): ?string
         fclose($lock);
     }
 }
+
+if (!function_exists('photo_e')) {
+    function photo_e(string $valeur): string
+    {
+        return htmlspecialchars(
+            $valeur,
+            ENT_QUOTES,
+            'UTF-8'
+        );
+    }
+}
+
