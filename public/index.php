@@ -111,36 +111,6 @@ if ($directory === null || !is_dir($directory)) {
 
 $items = photo_list($folder);
 
-// Pagination
-$elementsParPage = 60;
-
-$page = filter_input(
-    INPUT_GET,
-    'page',
-    FILTER_VALIDATE_INT
-);
-
-$page = ($page !== false && $page !== null && $page > 0)
-    ? $page
-    : 1;
-
-$totalElements = count($items);
-
-$totalPages = max(
-    1,
-    (int) ceil($totalElements / $elementsParPage)
-);
-
-// Éviter de dépasser la dernière page.
-$page = min($page, $totalPages);
-
-// Extraire uniquement les éléments de la page.
-$items = array_slice(
-    $items,
-    ($page - 1) * $elementsParPage,
-    $elementsParPage
-);
-
 $parts = $folder === ''
     ? []
     : explode('/', $folder);
@@ -263,11 +233,10 @@ $parts = $folder === ''
                         <?php if ($item['type'] === 'image'): ?>
 
                             <img
-    src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
-    loading="lazy"
-    decoding="async"
-    alt="<?= photo_e($item['name']) ?>"
->
+                                src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
+                                loading="lazy"
+                                alt="<?= photo_e($item['name']) ?>"
+                            >
 
                         <?php else: ?>
 
@@ -299,34 +268,6 @@ photo_bouton_telecharger(
         <?php endforeach; ?>
 
     </section>
-    <?php if ($totalPages > 1): ?>
-
-<nav class="pagination" aria-label="Pagination">
-
-    <?php if ($page > 1): ?>
-
-        <a href="?dossier=<?= rawurlencode($folder) ?>&page=<?= $page - 1 ?>">
-            ❮ Précédent
-        </a>
-
-    <?php endif; ?>
-
-    <span>
-        Page <?= $page ?> / <?= $totalPages ?>
-    </span>
-
-    <?php if ($page < $totalPages): ?>
-
-        <a href="?dossier=<?= rawurlencode($folder) ?>&page=<?= $page + 1 ?>">
-            Suivant ❯
-        </a>
-
-    <?php endif; ?>
-
-</nav>
-
-<?php endif; ?>
-
 
 </main>
 
