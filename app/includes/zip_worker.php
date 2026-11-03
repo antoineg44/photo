@@ -43,20 +43,28 @@ function zipUpdate(array $job): void
     );
 
     if ($json === false) {
-        throw new RuntimeException('Impossible de générer le statut JSON.');
+        throw new RuntimeException(
+            'Impossible de générer le statut JSON.'
+        );
     }
 
     $temporary = $jobFile . '.' . bin2hex(random_bytes(5)) . '.tmp';
 
     if (file_put_contents($temporary, $json, LOCK_EX) === false) {
-        throw new RuntimeException('Impossible d’écrire le statut.');
+        throw new RuntimeException(
+            'Impossible d’écrire le statut.'
+        );
     }
 
     if (!rename($temporary, $jobFile)) {
         @unlink($temporary);
-        throw new RuntimeException('Impossible de mettre à jour le statut.');
+
+        throw new RuntimeException(
+            'Impossible de mettre à jour le statut.'
+        );
     }
 }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -70,6 +78,37 @@ function zipCancelled(): bool
 
     return is_file($cancelFile);
 }
+
+/*
+|--------------------------------------------------------------------------
+| INFORMATIONS DE DIAGNOSTIC
+|--------------------------------------------------------------------------
+*/
+
+function zipDiagnostic(
+    array &$job,
+    string $etape,
+    string $message
+): void {
+
+    global $archive;
+
+    $job['step'] = $etape;
+    $job['message'] = $message;
+    $job['last_activity'] = time();
+
+    clearstatcache(true, $archive);
+
+    $job['archive_size'] = is_file($archive)
+        ? filesize($archive)
+        : 0;
+
+    $job['memory_usage'] = memory_get_usage(true);
+    $job['peak_memory'] = memory_get_peak_usage(true);
+
+    zipUpdate($job);
+}
+
 
 /*
 |--------------------------------------------------------------------------
@@ -287,27 +326,38 @@ try {
     | FINALISATION DU ZIP : 90 À 99 %
     |--------------------------------------------------------------------------
     */
+/*
+|--------------------------------------------------------------------------
+| FINALISATION DU ZIP
+|--------------------------------------------------------------------------
+*/
 
-    $job['progress'] = 90;
-    $job['message'] = 'Finalisation de l’archive...';
+$debutFinalisation = microtime(true);
 
-    zipUpdate($job);
+$job['progress'] = 90;
 
-    /*
-    |--------------------------------------------------------------------------
-    | SUIVI DE LA FINALISATION
-    |--------------------------------------------------------------------------
-    */
+zipDiagnostic(
+    $job,
+    'finalization_start',
+    'Début de la finalisation de l’archive.'
+);
 
-    if (method_exists($zip, 'registerProgressCallback')) {
+/*
+|--------------------------------------------------------------------------
+| CALLBACK DE PROGRESSION
+|--------------------------------------------------------------------------
+*/
+
+if (method_exists($zip, 'registerProgressCallback')) {
 
     $dernierPourcentage = 90;
 
     $zip->registerProgressCallback(
-        0.02,
+        0.01,
         function (float $progress) use (
             &$job,
-            &$dernierPourcentage
+            &$dernierPourcentage,
+            $debutFinalisation
         ): void {
 
             $pourcentage = 90 + (int) floor(
@@ -316,53 +366,89 @@ try {
 
             $pourcentage = min(99, $pourcentage);
 
-            // Éviter les écritures inutiles dans le JSON.
-            if ($pourcentage <= $dernierPourcentage) {
-                return;
+            $job['finalization_progress'] = $progress;
+
+            $job['finalization_elapsed'] = round(
+                microtime(true) - $debutFinalisation,
+                2
+            );
+
+            if ($pourcentage > $dernierPourcentage) {
+
+                $dernierPourcentage = $pourcentage;
+
+                $job['progress'] = $pourcentage;
+
+                $job['message'] = 'Finalisation de l’archive...';
+
+                zipUpdate($job);
             }
-
-            $dernierPourcentage = $pourcentage;
-
-            $job['progress'] = $pourcentage;
-
-            $job['message'] = 'Finalisation de l’archive...';
-
-            zipUpdate($job);
         }
     );
 }
 
+/*
+|--------------------------------------------------------------------------
+| CALLBACK D'ANNULATION
+|--------------------------------------------------------------------------
+*/
 
-    /*
-    |--------------------------------------------------------------------------
-    | ANNULATION PENDANT LA FINALISATION
-    |--------------------------------------------------------------------------
-    */
+if (method_exists($zip, 'registerCancelCallback')) {
 
-    if (method_exists($zip, 'registerCancelCallback')) {
+    $zip->registerCancelCallback(
+        function (): int {
 
-        $zip->registerCancelCallback(
-            function (): int {
+            return zipCancelled() ? 1 : 0;
+        }
+    );
+}
 
-                return zipCancelled() ? 1 : 0;
-            }
-        );
+/*
+|--------------------------------------------------------------------------
+| FERMETURE DU ZIP
+|--------------------------------------------------------------------------
+*/
+
+zipDiagnostic(
+    $job,
+    'zip_close',
+    'Écriture finale des données ZIP...'
+);
+
+$success = $zip->close();
+
+$zipOpen = false;
+
+/*
+|--------------------------------------------------------------------------
+| RÉSULTAT DE LA FERMETURE
+|--------------------------------------------------------------------------
+*/
+
+$job['finalization_elapsed'] = round(
+    microtime(true) - $debutFinalisation,
+    2
+);
+
+$job['zip_close_success'] = $success;
+
+if (!$success) {
+
+    if (zipCancelled()) {
+        throw new RuntimeException('Annulation demandée.');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | FERMETURE RÉELLE DU ZIP
-    |--------------------------------------------------------------------------
-    */
+    throw new RuntimeException(
+        'Erreur pendant la fermeture du ZIP.'
+    );
+}
 
-    $job['message'] = 'Écriture des données et finalisation...';
+zipDiagnostic(
+    $job,
+    'zip_closed',
+    'Archive fermée. Vérification en cours...'
+);
 
-    zipUpdate($job);
-
-    // close() réalise réellement une partie importante du travail.
-    $success = $zip->close();
-
-    $zipOpen = false;
 
 
     if (!$success) {
@@ -412,6 +498,10 @@ try {
     */
 
     $job['status'] = 'ready';
+    $job['step'] = 'completed';
+$job['completed_at'] = time();
+$job['archive_size'] = filesize($archive);
+
     $job['progress'] = 100;
     $job['files_done'] = $done;
     $job['files_total'] = $total;
