@@ -346,7 +346,7 @@ if (!is_file($worker) || !function_exists('exec')) {
     downloadErreur(500, 'Impossible de lancer le processus ZIP.');
 }
 
-$command = escapeshellarg(PHP_BINARY)
+$command = escapeshellarg('/usr/bin/php')
     . ' '
     . escapeshellarg($worker)
     . ' '
