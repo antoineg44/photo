@@ -3,41 +3,79 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/functions.php';
 
-$directory = $argv[1] ?? '';
+/*
+|--------------------------------------------------------------------------
+| INITIALISATION
+|--------------------------------------------------------------------------
+*/
 
-if ($directory === '' || !is_dir($directory)) {
+$directoryArgument = $argv[1] ?? '';
+
+if ($directoryArgument === '' || !is_dir($directoryArgument)) {
     exit(1);
 }
 
-$directory = realpath($directory);
+$directory = realpath($directoryArgument);
 
 if ($directory === false) {
     exit(1);
 }
 
 $jobFile = $directory . '/job.json';
+$cancelFile = $directory . '/cancel';
+$archive = $directory . '/archive.zip';
+
+/*
+|--------------------------------------------------------------------------
+| MISE À JOUR DU JOB
+|--------------------------------------------------------------------------
+*/
 
 function zipUpdate(array $job): void
 {
     global $jobFile;
 
-    $temporary = $jobFile . '.tmp';
+    $job['updated_at'] = time();
 
-    file_put_contents(
-        $temporary,
-        json_encode($job, JSON_UNESCAPED_UNICODE),
-        LOCK_EX
+    $json = json_encode(
+        $job,
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
     );
 
-    rename($temporary, $jobFile);
+    if ($json === false) {
+        throw new RuntimeException('Impossible de générer le statut JSON.');
+    }
+
+    $temporary = $jobFile . '.' . bin2hex(random_bytes(5)) . '.tmp';
+
+    if (file_put_contents($temporary, $json, LOCK_EX) === false) {
+        throw new RuntimeException('Impossible d’écrire le statut.');
+    }
+
+    if (!rename($temporary, $jobFile)) {
+        @unlink($temporary);
+        throw new RuntimeException('Impossible de mettre à jour le statut.');
+    }
 }
+
+/*
+|--------------------------------------------------------------------------
+| VÉRIFICATION DE L'ANNULATION
+|--------------------------------------------------------------------------
+*/
 
 function zipCancelled(): bool
 {
-    global $directory;
+    global $cancelFile;
 
-    return is_file($directory . '/cancel');
+    return is_file($cancelFile);
 }
+
+/*
+|--------------------------------------------------------------------------
+| CHARGEMENT DU JOB
+|--------------------------------------------------------------------------
+*/
 
 $job = json_decode(
     (string) file_get_contents($jobFile),
@@ -48,27 +86,47 @@ if (!is_array($job)) {
     exit(1);
 }
 
+$zip = null;
+$zipOpen = false;
+
 try {
 
-    $source = photo_resolve($job['relative_path']);
+    /*
+    |--------------------------------------------------------------------------
+    | VÉRIFICATION INITIALE
+    |--------------------------------------------------------------------------
+    */
+
+    if (zipCancelled()) {
+        throw new RuntimeException('Annulation demandée.');
+    }
+
+    $source = photo_resolve(
+        (string) ($job['relative_path'] ?? '')
+    );
 
     if ($source === null || !is_dir($source)) {
         throw new RuntimeException('Dossier source introuvable.');
     }
 
-    $archive = $directory . '/archive.zip';
+    $source = realpath($source);
 
-    $zip = new ZipArchive();
-
-    if ($zip->open($archive, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-        throw new RuntimeException('Impossible de créer le ZIP.');
+    if ($source === false) {
+        throw new RuntimeException('Chemin source invalide.');
     }
 
     /*
     |--------------------------------------------------------------------------
-    | PREMIÈRE PASSE : COMPTAGE
+    | PREMIÈRE PASSE : COMPTAGE DES FICHIERS
     |--------------------------------------------------------------------------
     */
+
+    $job['progress'] = 0;
+    $job['files_done'] = 0;
+    $job['files_total'] = 0;
+    $job['message'] = 'Analyse du dossier...';
+
+    zipUpdate($job);
 
     $total = 0;
 
@@ -86,23 +144,63 @@ try {
             throw new RuntimeException('Annulation demandée.');
         }
 
-        if ($file->isFile() && !$file->isLink()) {
+        if (
+            $file->isFile()
+            && $file->isReadable()
+            && !$file->isLink()
+        ) {
             $total++;
         }
     }
 
     $job['files_total'] = $total;
-    $job['message'] = 'Création de l’archive...';
+    $job['message'] = 'Préparation de l’archive...';
 
     zipUpdate($job);
 
+    if ($total === 0) {
+        throw new RuntimeException(
+            'Le dossier ne contient aucun fichier téléchargeable.'
+        );
+    }
+
     /*
     |--------------------------------------------------------------------------
-    | DEUXIÈME PASSE : CRÉATION DU ZIP
+    | OUVERTURE DU ZIP
+    |--------------------------------------------------------------------------
+    */
+
+    if (zipCancelled()) {
+        throw new RuntimeException('Annulation demandée.');
+    }
+
+    $zip = new ZipArchive();
+
+    $result = $zip->open(
+        $archive,
+        ZipArchive::CREATE | ZipArchive::OVERWRITE
+    );
+
+    if ($result !== true) {
+        throw new RuntimeException(
+            'Impossible de créer le ZIP. Code : ' . $result
+        );
+    }
+
+    $zipOpen = true;
+
+    /*
+    |--------------------------------------------------------------------------
+    | DEUXIÈME PASSE : AJOUT DES FICHIERS
     |--------------------------------------------------------------------------
     */
 
     $done = 0;
+
+    $job['progress'] = 1;
+    $job['message'] = 'Ajout des fichiers...';
+
+    zipUpdate($job);
 
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator(
@@ -118,7 +216,11 @@ try {
             throw new RuntimeException('Annulation demandée.');
         }
 
-        if (!$file->isFile() || !$file->isReadable() || $file->isLink()) {
+        if (
+            !$file->isFile()
+            || !$file->isReadable()
+            || $file->isLink()
+        ) {
             continue;
         }
 
@@ -128,25 +230,44 @@ try {
             continue;
         }
 
+        // Vérification que le fichier reste dans le dossier source.
+        if (!str_starts_with(
+            $real,
+            $source . DIRECTORY_SEPARATOR
+        )) {
+            continue;
+        }
+
         $relative = substr(
             $real,
             strlen($source) + 1
         );
 
         if (!$zip->addFile($real, $relative)) {
-            throw new RuntimeException('Erreur ajout fichier ZIP.');
+            throw new RuntimeException(
+                'Impossible d’ajouter : ' . $relative
+            );
         }
 
         $done++;
 
+        /*
+        |--------------------------------------------------------------------------
+        | PROGRESSION DE 1 À 89 %
+        |--------------------------------------------------------------------------
+        */
+
         $job['files_done'] = $done;
 
-        $job['progress'] = $total > 0
-            ? (int) floor(($done / $total) * 100)
-            : 100;
+        $job['progress'] = min(
+            89,
+            1 + (int) floor(($done / $total) * 88)
+        );
 
-        if ($done % 10 === 0 || $done === $total) {
-            $job['message'] = 'Création de l’archive...';
+        if ($done % 5 === 0 || $done === $total) {
+
+            $job['message'] = 'Ajout des fichiers...';
+
             zipUpdate($job);
         }
     }
@@ -155,30 +276,166 @@ try {
         throw new RuntimeException('Annulation demandée.');
     }
 
-    $zip->close();
-
     if ($done === 0) {
-        throw new RuntimeException('Le dossier ne contient aucun fichier.');
+        throw new RuntimeException(
+            'Aucun fichier n’a pu être ajouté.'
+        );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | FINALISATION DU ZIP : 90 À 99 %
+    |--------------------------------------------------------------------------
+    */
+
+    $job['progress'] = 90;
+    $job['message'] = 'Finalisation de l’archive...';
+
+    zipUpdate($job);
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUIVI DE LA FINALISATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (method_exists($zip, 'registerProgressCallback')) {
+
+        $zip->registerProgressCallback(
+            0.02,
+            function (float $progress) use (&$job): void {
+
+                $pourcentage = 90 + (int) floor(
+                    max(0, min(1, $progress)) * 9
+                );
+
+                $job['progress'] = min(99, $pourcentage);
+
+                $job['message'] = 'Finalisation de l’archive...';
+
+                zipUpdate($job);
+            }
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ANNULATION PENDANT LA FINALISATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (method_exists($zip, 'registerCancelCallback')) {
+
+        $zip->registerCancelCallback(
+            function (): int {
+
+                return zipCancelled() ? 1 : 0;
+            }
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | FERMETURE RÉELLE DU ZIP
+    |--------------------------------------------------------------------------
+    */
+
+    $job['message'] = 'Écriture des données et finalisation...';
+
+    zipUpdate($job);
+
+    // close() réalise réellement une partie importante du travail.
+    $zipOpen = false;
+
+    $success = $zip->close();
+
+    if (!$success) {
+
+        if (zipCancelled()) {
+            throw new RuntimeException('Annulation demandée.');
+        }
+
+        throw new RuntimeException(
+            'Erreur pendant la finalisation du ZIP : '
+            . $zip->getStatusString()
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DERNIÈRE VÉRIFICATION DE L'ANNULATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (zipCancelled()) {
+        throw new RuntimeException('Annulation demandée.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VÉRIFICATION DE L'ARCHIVE
+    |--------------------------------------------------------------------------
+    */
+
+    clearstatcache(true, $archive);
+
+    if (
+        !is_file($archive)
+        || filesize($archive) === false
+        || filesize($archive) === 0
+    ) {
+        throw new RuntimeException(
+            'L’archive ZIP créée est vide ou inaccessible.'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ARCHIVE TERMINÉE
+    |--------------------------------------------------------------------------
+    */
 
     $job['status'] = 'ready';
     $job['progress'] = 100;
     $job['files_done'] = $done;
-    $job['message'] = 'Archive prête.';
+    $job['files_total'] = $total;
+    $job['message'] = 'Archive prête au téléchargement.';
 
     zipUpdate($job);
 
 } catch (Throwable $e) {
 
-    if (isset($zip) && $zip instanceof ZipArchive) {
+    /*
+    |--------------------------------------------------------------------------
+    | FERMETURE EN CAS D'ERREUR
+    |--------------------------------------------------------------------------
+    */
+
+    if ($zipOpen && $zip instanceof ZipArchive) {
+
+        $zipOpen = false;
+
         @$zip->close();
     }
 
-    @unlink($directory . '/archive.zip');
+    /*
+    |--------------------------------------------------------------------------
+    | SUPPRESSION DU ZIP INCOMPLET
+    |--------------------------------------------------------------------------
+    */
+
+    @unlink($archive);
+
+    /*
+    |--------------------------------------------------------------------------
+    | STATUT FINAL
+    |--------------------------------------------------------------------------
+    */
 
     if (zipCancelled()) {
 
         $job['status'] = 'cancelled';
+        $job['progress'] = 0;
         $job['message'] = 'Création annulée.';
 
     } else {
@@ -186,8 +443,17 @@ try {
         $job['status'] = 'error';
         $job['message'] = 'Erreur : ' . $e->getMessage();
 
-        error_log('Erreur ZIP photo : ' . $e->getMessage());
+        error_log(
+            'Erreur ZIP photo : ' . $e->getMessage()
+        );
     }
 
-    zipUpdate($job);
+    try {
+        zipUpdate($job);
+    } catch (Throwable $statusError) {
+        error_log(
+            'Impossible de mettre à jour le job ZIP : '
+            . $statusError->getMessage()
+        );
+    }
 }
