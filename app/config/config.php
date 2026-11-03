@@ -28,3 +28,13 @@ define(
     'PHOTO_VIDEO_EXTENSIONS',
     ['mp4', 'webm', 'ogv']
 );
+
+define(
+    'PHOTO_LOGIN_URL',
+    'https://compte.partitions.ovh/connexion.php'
+);
+
+define(
+    'PHOTO_LOGOUT_URL',
+    'https://compte.partitions.ovh/deconnexion.php'
+);
