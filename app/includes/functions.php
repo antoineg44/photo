@@ -161,108 +161,294 @@ function photo_list(string $relative): array
 /**
  * Génération d'une miniature JPEG.
  */
-function photo_thumbnail(string $source): ?string
+function photo_thumbnail(string $path): ?string
 {
+    /*
+    |--------------------------------------------------------------------------
+    | VÉRIFICATIONS
+    |--------------------------------------------------------------------------
+    */
+
+    if (!is_file($path) || !is_readable($path)) {
+        return null;
+    }
+
     if (!extension_loaded('gd')) {
         return null;
     }
 
-    $info = @getimagesize($source);
+    $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
-    if ($info === false) {
-        return null;
-    }
-
-    $mime = $info['mime'] ?? '';
-
-    $loaders = [
-        'image/jpeg' => 'imagecreatefromjpeg',
-        'image/png'  => 'imagecreatefrompng',
-        'image/gif'  => 'imagecreatefromgif',
-        'image/webp' => 'imagecreatefromwebp',
+    $fonctions = [
+        'jpg'  => 'imagecreatefromjpeg',
+        'jpeg' => 'imagecreatefromjpeg',
+        'png'  => 'imagecreatefrompng',
+        'gif'  => 'imagecreatefromgif',
+        'webp' => 'imagecreatefromwebp',
+        'bmp'  => 'imagecreatefrombmp',
     ];
 
-    if (!isset($loaders[$mime])) {
+    if (!isset($fonctions[$extension])) {
         return null;
     }
 
-    if (!function_exists($loaders[$mime])) {
+    $fonction = $fonctions[$extension];
+
+    if (!function_exists($fonction)) {
         return null;
     }
 
-    $image = @$loaders[$mime]($source);
+    /*
+    |--------------------------------------------------------------------------
+    | IDENTIFICATION DU FICHIER
+    |--------------------------------------------------------------------------
+    */
 
-    if (!$image) {
+    $mtime = filemtime($path);
+    $size = filesize($path);
+
+    if ($mtime === false || $size === false) {
         return null;
     }
 
-    $width = imagesx($image);
-    $height = imagesy($image);
-
-    if ($width <= 0 || $height <= 0) {
-        imagedestroy($image);
-        return null;
-    }
-
-    $max = PHOTO_MAX_THUMBNAIL_SIZE;
-
-    $ratio = min(
-        $max / $width,
-        $max / $height,
-        1
+    $identifiant = hash(
+        'sha256',
+        $path . '|' . $mtime . '|' . $size
     );
 
-    $newWidth = max(1, (int) ($width * $ratio));
-    $newHeight = max(1, (int) ($height * $ratio));
+    /*
+    |--------------------------------------------------------------------------
+    | ORGANISATION DU CACHE
+    |--------------------------------------------------------------------------
+    */
 
-    $thumbnail = imagecreatetruecolor(
-        $newWidth,
-        $newHeight
-    );
+    $cacheRoot = PHOTO_CACHE;
 
-    $background = imagecolorallocate(
-        $thumbnail,
-        255,
-        255,
-        255
-    );
+    $sousDossier = substr($identifiant, 0, 2);
 
-    imagefill(
-        $thumbnail,
-        0,
-        0,
-        $background
-    );
+    $cacheDirectory = $cacheRoot
+        . DIRECTORY_SEPARATOR
+        . $sousDossier;
 
-    imagecopyresampled(
-        $thumbnail,
-        $image,
-        0,
-        0,
-        0,
-        0,
-        $newWidth,
-        $newHeight,
-        $width,
-        $height
-    );
-
-    if (!is_dir(PHOTO_CACHE)) {
-        mkdir(PHOTO_CACHE, 0750, true);
-    }
-
-    $cacheFile = PHOTO_CACHE . '/'
-        . hash('sha256', $source . ':' . filemtime($source))
+    $thumbnail = $cacheDirectory
+        . DIRECTORY_SEPARATOR
+        . $identifiant
         . '.jpg';
 
-    $success = imagejpeg(
-        $thumbnail,
-        $cacheFile,
-        85
-    );
+    /*
+    |--------------------------------------------------------------------------
+    | CACHE EXISTANT
+    |--------------------------------------------------------------------------
+    */
 
-    imagedestroy($image);
-    imagedestroy($thumbnail);
+    if (
+        is_file($thumbnail)
+        && filesize($thumbnail) > 0
+    ) {
+        return $thumbnail;
+    }
 
-    return $success ? $cacheFile : null;
+    /*
+    |--------------------------------------------------------------------------
+    | CRÉATION DU DOSSIER
+    |--------------------------------------------------------------------------
+    */
+
+    if (!is_dir($cacheDirectory)) {
+
+        if (!mkdir($cacheDirectory, 0750, true) && !is_dir($cacheDirectory)) {
+            error_log(
+                'Photo : impossible de créer le cache : '
+                . $cacheDirectory
+            );
+
+            return null;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VERROUILLAGE
+    |--------------------------------------------------------------------------
+    */
+
+    $lockFile = $thumbnail . '.lock';
+
+    $lock = fopen($lockFile, 'c');
+
+    if ($lock === false) {
+        return null;
+    }
+
+    if (!flock($lock, LOCK_EX)) {
+        fclose($lock);
+        return null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | NOUVELLE VÉRIFICATION APRÈS VERROUILLAGE
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        is_file($thumbnail)
+        && filesize($thumbnail) > 0
+    ) {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+
+        return $thumbnail;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CHARGEMENT DE L'IMAGE
+    |--------------------------------------------------------------------------
+    */
+
+    try {
+
+        $image = @$fonction($path);
+
+        if ($image === false) {
+            return null;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | DIMENSIONS
+        |--------------------------------------------------------------------------
+        */
+
+        $largeur = imagesx($image);
+        $hauteur = imagesy($image);
+
+        if ($largeur <= 0 || $hauteur <= 0) {
+            imagedestroy($image);
+            return null;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | CALCUL DES PROPORTIONS
+        |--------------------------------------------------------------------------
+        */
+
+        $tailleMax = (int) PHOTO_MAX_THUMBNAIL_SIZE;
+
+        $ratio = min(
+            $tailleMax / $largeur,
+            $tailleMax / $hauteur,
+            1
+        );
+
+        $nouvelleLargeur = max(
+            1,
+            (int) round($largeur * $ratio)
+        );
+
+        $nouvelleHauteur = max(
+            1,
+            (int) round($hauteur * $ratio)
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | CRÉATION DE LA MINIATURE
+        |--------------------------------------------------------------------------
+        */
+
+        $miniature = imagecreatetruecolor(
+            $nouvelleLargeur,
+            $nouvelleHauteur
+        );
+
+        if ($miniature === false) {
+            imagedestroy($image);
+            return null;
+        }
+
+        $blanc = imagecolorallocate(
+            $miniature,
+            255,
+            255,
+            255
+        );
+
+        imagefill($miniature, 0, 0, $blanc);
+
+        imagecopyresampled(
+            $miniature,
+            $image,
+            0,
+            0,
+            0,
+            0,
+            $nouvelleLargeur,
+            $nouvelleHauteur,
+            $largeur,
+            $hauteur
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | FICHIER TEMPORAIRE
+        |--------------------------------------------------------------------------
+        */
+
+        $temporaire = $thumbnail
+            . '.'
+            . bin2hex(random_bytes(8))
+            . '.tmp';
+
+        /*
+        |--------------------------------------------------------------------------
+        | ENREGISTREMENT JPEG
+        |--------------------------------------------------------------------------
+        */
+
+        $succes = imagejpeg(
+            $miniature,
+            $temporaire,
+            85
+        );
+
+        imagedestroy($image);
+        imagedestroy($miniature);
+
+        if (!$succes) {
+            @unlink($temporaire);
+            return null;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | INSTALLATION ATOMIQUE DU CACHE
+        |--------------------------------------------------------------------------
+        */
+
+        if (!rename($temporaire, $thumbnail)) {
+            @unlink($temporaire);
+            return null;
+        }
+
+        chmod($thumbnail, 0640);
+
+        return $thumbnail;
+
+    } catch (Throwable $exception) {
+
+        error_log(
+            'Erreur génération miniature : '
+            . $exception->getMessage()
+        );
+
+        return null;
+
+    } finally {
+
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
 }
