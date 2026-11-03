@@ -72,10 +72,24 @@ if ($path === null || !is_file($path)) {
 
 if ($type === 'player') {
 
-    if (!photo_is_video($path)) {
-        http_response_code(415);
+    // Affichage d'une photo
+    if (photo_is_image($path)) {
+
+        header('Location: media.php?type=view&file=' . rawurlencode($file));
         exit;
     }
+
+    // Lecture d'une vidéo
+    if (!photo_is_video($path)) {
+        http_response_code(415);
+        exit('Format de média non pris en charge.');
+    }
+
+    $source = 'media.php?type=view&file='
+        . rawurlencode($file);
+
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: no-store');
 
     $source = 'media.php?type=view&file='
         . rawurlencode($file);
