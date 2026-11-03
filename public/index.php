@@ -35,6 +35,34 @@ function photo_e(string $valeur): string
     );
 }
 
+function photo_bouton_telecharger(
+    string $chemin,
+    string $csrfToken
+): void {
+    ?>
+    <form method="POST" action="download.php" class="form-telecharger">
+
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="<?= photo_e($csrfToken) ?>"
+        >
+
+        <input
+            type="hidden"
+            name="file"
+            value="<?= photo_e($chemin) ?>"
+        >
+
+        <button type="submit" class="bouton-telecharger">
+            ⬇ Télécharger
+        </button>
+
+    </form>
+    <?php
+}
+
+
 $identifiant = (string) (
     $_SESSION['utilisateur_identifiant'] ?? ''
 );
@@ -170,16 +198,27 @@ $parts = $folder === ''
 
             <?php if ($item['type'] === 'directory'): ?>
 
-                <a class="element dossier"
-                   href="?dossier=<?= rawurlencode($item['path']) ?>">
+    <div class="element dossier">
 
-                    <div class="icone">📁</div>
+        <a href="?dossier=<?= rawurlencode($item['path']) ?>">
 
-                    <div class="nom">
-                        <?= photo_e($item['name']) ?>
-                    </div>
+            <div class="icone">📁</div>
 
-                </a>
+            <div class="nom">
+                <?= photo_e($item['name']) ?>
+            </div>
+
+        </a>
+
+        <?php
+        photo_bouton_telecharger(
+            $item['path'],
+            $csrfToken
+        );
+        ?>
+
+    </div>
+
 
             <?php else: ?>
 
@@ -211,8 +250,16 @@ $parts = $folder === ''
                     </a>
 
                     <div class="nom">
-                        <?= photo_e($item['name']) ?>
-                    </div>
+    <?= photo_e($item['name']) ?>
+</div>
+
+<?php
+photo_bouton_telecharger(
+    $item['path'],
+    $csrfToken
+);
+?>
+
 
                 </div>
 
