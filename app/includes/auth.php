@@ -22,7 +22,7 @@ require_once '/var/www/compte/config/services.php';
 require_once __DIR__ . '/../config/config.php';
 
 if (!isset($_SESSION['utilisateur_id'])) {
-    header('Location: connexion.php');
+    header('Location: ' . PHOTO_LOGIN_URL);
     exit;
 }
 
