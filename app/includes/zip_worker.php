@@ -301,22 +301,37 @@ try {
 
     if (method_exists($zip, 'registerProgressCallback')) {
 
-        $zip->registerProgressCallback(
-            0.02,
-            function (float $progress) use (&$job): void {
+    $dernierPourcentage = 90;
 
-                $pourcentage = 90 + (int) floor(
-                    max(0, min(1, $progress)) * 9
-                );
+    $zip->registerProgressCallback(
+        0.02,
+        function (float $progress) use (
+            &$job,
+            &$dernierPourcentage
+        ): void {
 
-                $job['progress'] = min(99, $pourcentage);
+            $pourcentage = 90 + (int) floor(
+                max(0, min(1, $progress)) * 9
+            );
 
-                $job['message'] = 'Finalisation de l’archive...';
+            $pourcentage = min(99, $pourcentage);
 
-                zipUpdate($job);
+            // Éviter les écritures inutiles dans le JSON.
+            if ($pourcentage <= $dernierPourcentage) {
+                return;
             }
-        );
-    }
+
+            $dernierPourcentage = $pourcentage;
+
+            $job['progress'] = $pourcentage;
+
+            $job['message'] = 'Finalisation de l’archive...';
+
+            zipUpdate($job);
+        }
+    );
+}
+
 
     /*
     |--------------------------------------------------------------------------
@@ -345,9 +360,10 @@ try {
     zipUpdate($job);
 
     // close() réalise réellement une partie importante du travail.
+    $success = $zip->close();
+
     $zipOpen = false;
 
-    $success = $zip->close();
 
     if (!$success) {
 
