@@ -307,6 +307,8 @@ photo_bouton_telecharger(
 </div>
 
 <script src="assets/js/app.js"></script>
+<script src="assets/js/download.js"></script>
+
 
     <div id="zipProgress" class="zip-progress" hidden>
 
