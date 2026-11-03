@@ -38,3 +38,11 @@ define(
     'PHOTO_LOGOUT_URL',
     'https://photo.partitions.ovh/deconnexion.php'
 );
+
+define('PHOTO_HIDDEN_DIRECTORIES', [
+    '@eaDir',
+    '.@__thumb',
+    'corbeille',
+    'Archives privées',
+    'A trier',
+]);
