@@ -117,7 +117,7 @@ $parts = $folder === ''
 
                 <div class="element media">
 
-                    <a href="media.php?type=view&amp;file=<?= rawurlencode($item['path']) ?>"
+                    <a href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
                        class="media-link"
                        <?= $item['type'] === 'image'
                            ? 'data-image="1"'
