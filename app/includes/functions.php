@@ -83,7 +83,7 @@ function photo_is_video(string $file): bool
 /**
  * Retourne le contenu d'un dossier.
  */
-function photo_list(string $relative): array
+function photo_list_uncached(string $relative): array
 {
     $directory = photo_resolve($relative);
 
@@ -170,6 +170,108 @@ function photo_list(string $relative): array
 
     return $items;
 }
+
+/**
+ * Liste les éléments d'un dossier avec cache JSON.
+ */
+function photo_list(string $folder): array
+{
+    $directory = photo_resolve($folder);
+
+    if ($directory === null || !is_dir($directory)) {
+        return [];
+    }
+
+    $cacheDirectory = PHOTO_DIRECTORY_CACHE;
+
+    // Création du répertoire de cache si nécessaire.
+    if (!is_dir($cacheDirectory)) {
+        if (!mkdir($cacheDirectory, 0750, true)
+            && !is_dir($cacheDirectory)) {
+            error_log('Impossible de créer le cache des dossiers.');
+            return photo_list_uncached($folder);
+        }
+    }
+
+    // Nom unique du cache pour chaque dossier.
+    $cacheFile = $cacheDirectory . '/'
+        . hash('sha256', $folder) . '.json';
+
+    clearstatcache(true, $directory);
+
+    // Date de modification du dossier.
+    $directoryMtime = filemtime($directory);
+
+    if ($directoryMtime === false) {
+        return photo_list_uncached($folder);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | LECTURE DU CACHE
+    |--------------------------------------------------------------------------
+    */
+
+    if (is_file($cacheFile) && is_readable($cacheFile)) {
+
+        $json = file_get_contents($cacheFile);
+
+        if ($json !== false) {
+
+            $cache = json_decode($json, true);
+
+            if (
+                is_array($cache)
+                && isset($cache['mtime'])
+                && isset($cache['items'])
+                && $cache['mtime'] === $directoryMtime
+                && is_array($cache['items'])
+            ) {
+                return $cache['items'];
+            }
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RECONSTRUCTION DU CACHE
+    |--------------------------------------------------------------------------
+    */
+
+    $items = photo_list_uncached($folder);
+
+    $data = [
+        'mtime' => $directoryMtime,
+        'generated_at' => time(),
+        'items' => $items
+    ];
+
+    $json = json_encode(
+        $data,
+        JSON_UNESCAPED_UNICODE
+        | JSON_UNESCAPED_SLASHES
+    );
+
+    if ($json !== false) {
+
+        // Écriture temporaire pour éviter les JSON incomplets.
+        $temporaryFile = $cacheFile . '.tmp';
+
+        if (file_put_contents(
+            $temporaryFile,
+            $json,
+            LOCK_EX
+        ) !== false) {
+
+            if (!rename($temporaryFile, $cacheFile)) {
+                @unlink($temporaryFile);
+            }
+        }
+    }
+
+    return $items;
+}
+
 
 /**
  * Génération d'une miniature JPEG.
