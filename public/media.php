@@ -1,8 +1,64 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../app/includes/auth.php';
+/*
+|--------------------------------------------------------------------------
+| AUTHENTIFICATION
+|--------------------------------------------------------------------------
+*/
+
+$isHttps = isset($_SERVER['HTTPS'])
+    && $_SERVER['HTTPS'] !== 'off';
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $isHttps,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+session_start();
+
+require_once '/var/www/compte/config/database.php';
+require_once '/var/www/compte/config/services.php';
+
+if (!isset($_SESSION['utilisateur_id'])) {
+    http_response_code(403);
+    exit('Authentification nécessaire.');
+}
+
+try {
+    $autorise = utilisateurAAccesService(
+        $pdo,
+        (int) $_SESSION['utilisateur_id'],
+        'photo'
+    );
+
+} catch (Throwable $exception) {
+
+    error_log(
+        'Erreur autorisation média photo : '
+        . $exception->getMessage()
+    );
+
+    http_response_code(500);
+    exit('Impossible de vérifier vos autorisations.');
+}
+
+if (!$autorise) {
+    http_response_code(403);
+    exit('Accès non autorisé.');
+}
+
+/*
+|--------------------------------------------------------------------------
+| FONCTIONS DE LA GALERIE
+|--------------------------------------------------------------------------
+*/
+
 require_once __DIR__ . '/../app/includes/functions.php';
+
 
 $file = (string) ($_GET['file'] ?? '');
 $type = (string) ($_GET['type'] ?? '');
