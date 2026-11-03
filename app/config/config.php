@@ -31,10 +31,10 @@ define(
 
 define(
     'PHOTO_LOGIN_URL',
-    'https://compte.partitions.ovh/connexion.php'
+    'https://photo.partitions.ovh/connexion.php'
 );
 
 define(
     'PHOTO_LOGOUT_URL',
-    'https://compte.partitions.ovh/deconnexion.php'
+    'https://photo.partitions.ovh/deconnexion.php'
 );
