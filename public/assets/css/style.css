@@ -163,6 +163,44 @@ main {
     color: #777;
 }
 
+/* SELECTEUR DE VUE */
+
+.view-selector {
+    display: flex;
+    gap: 10px;
+
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.view-button {
+    display: inline-block;
+
+    padding: 10px 16px;
+
+    background: #e5e7eb;
+    color: #333;
+
+    text-decoration: none;
+
+    border-radius: 8px;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    transition: 0.2s;
+}
+
+.view-button:hover {
+    background: #d1d5db;
+}
+
+.view-button.active {
+    background: #2563eb;
+    color: white;
+}
+
+
 @media(max-width: 600px) {
 
     .galerie {
