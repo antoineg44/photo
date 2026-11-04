@@ -109,7 +109,73 @@ if ($directory === null || !is_dir($directory)) {
     exit('Répertoire introuvable.');
 }
 
-$items = photo_list($folder);
+/*
+|--------------------------------------------------------------------------
+| RÉCUPÉRATION RÉCURSIVE DES MÉDIAS
+|--------------------------------------------------------------------------
+*/
+
+$items = [];
+
+$collectMedia = function (string $relative) use (&$collectMedia, &$items): void {
+
+    $elements = photo_list($relative);
+
+    foreach ($elements as $element) {
+
+        if ($element['type'] === 'directory') {
+
+            // Explorer les sous-dossiers
+            $collectMedia($element['path']);
+
+            continue;
+        }
+
+        // Récupération de la date de prise de vue
+        $dateTaken = $element['date_taken'] ?? null;
+
+        $timestamp = null;
+
+        if (is_string($dateTaken) && $dateTaken !== '') {
+
+            $parsed = strtotime($dateTaken);
+
+            if ($parsed !== false) {
+                $timestamp = $parsed;
+            }
+        }
+
+        $element['timestamp'] = $timestamp;
+
+        $items[] = $element;
+    }
+};
+
+// Lancement de la recherche depuis le dossier courant
+$collectMedia($folder);
+
+/*
+|--------------------------------------------------------------------------
+| TRI CHRONOLOGIQUE
+|--------------------------------------------------------------------------
+*/
+
+usort($items, static function ($a, $b) {
+
+    $dateA = $a['timestamp'] ?? null;
+    $dateB = $b['timestamp'] ?? null;
+
+    // Les médias sans date sont placés à la fin
+    if ($dateA === null && $dateB !== null) {
+        return 1;
+    }
+
+    if ($dateB === null && $dateA !== null) {
+        return -1;
+    }
+
+    return ($dateA ?? 0) <=> ($dateB ?? 0);
+});
 
 $parts = $folder === ''
     ? []
@@ -130,6 +196,8 @@ $parts = $folder === ''
 
 <link rel="stylesheet"
       href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/timeline.css">
+
 
 </head>
 
@@ -184,7 +252,7 @@ $parts = $folder === ''
 
     </nav>
 
-    <section class="galerie">
+    <section class="galerie" id="galerie">
 
     <?php if (empty($items)): ?>
 
@@ -194,90 +262,122 @@ $parts = $folder === ''
 
     <?php endif; ?>
 
+    <?php
+    $previousDay = null;
+    ?>
+
     <?php foreach ($items as $item): ?>
 
-        <?php if ($item['type'] === 'directory'): ?>
+        <?php
 
-            <!-- DOSSIER -->
+        $timestamp = $item['timestamp'] ?? null;
 
-            <div class="element dossier">
+        $currentDay = $timestamp !== null
+            ? date('Y-m-d', $timestamp)
+            : 'sans-date';
 
-                <a href="?dossier=<?= rawurlencode($item['path']) ?>"
-                   class="media-link">
+        ?>
 
-                    <div class="icone">📁</div>
+        <?php if ($currentDay !== $previousDay): ?>
 
-                    <div class="nom">
-                        <?= photo_e($item['name']) ?>
-                    </div>
+            <div class="date-separator">
 
-                </a>
-
-                <button
-                    type="button"
-                    class="download-folder"
-                    data-file="<?= photo_e($item['path']) ?>">
-
-                    ⬇ Télécharger le dossier
-
-                </button>
+                <?= $timestamp !== null
+                    ? photo_e(date('d/m/Y', $timestamp))
+                    : 'Date inconnue' ?>
 
             </div>
 
-        <?php else: ?>
-
-            <!-- FICHIER PHOTO OU VIDÉO -->
-
-            <div class="element media">
-
-                <a href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
-                   class="media-link"
-                   <?= $item['type'] === 'image'
-                       ? 'data-image="1"'
-                       : '' ?>>
-
-                    <?php if ($item['type'] === 'image'): ?>
-
-                        <img
-                            src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
-                            loading="lazy"
-                            alt="<?= photo_e($item['name']) ?>"
-                        >
-
-                    <?php else: ?>
-
-                        <div class="video-preview">
-                            <span>▶</span>
-                            <small>VIDÉO</small>
-                        </div>
-
-                    <?php endif; ?>
-
-                </a>
-
-                <div class="nom">
-                    <?= photo_e($item['name']) ?>
-                </div>
-
-                <!-- TÉLÉCHARGEMENT INDIVIDUEL -->
-
-                <?php
-                photo_bouton_telecharger(
-                    $item['path'],
-                    $csrfToken
-                );
-                ?>
-
-            </div>
+            <?php $previousDay = $currentDay; ?>
 
         <?php endif; ?>
+
+        <div
+            class="element media"
+            data-timestamp="<?= $timestamp ?? '' ?>"
+        >
+
+            <a
+                href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
+                class="media-link"
+                <?= $item['type'] === 'image'
+                    ? 'data-image="1"'
+                    : '' ?>
+            >
+
+                <?php if ($item['type'] === 'image'): ?>
+
+                    <img
+                        src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
+                        loading="lazy"
+                        alt="<?= photo_e($item['name']) ?>"
+                    >
+
+                <?php else: ?>
+
+                    <div class="video-preview">
+                        <span>▶</span>
+                        <small>VIDÉO</small>
+                    </div>
+
+                <?php endif; ?>
+
+            </a>
+
+            <div class="nom">
+                <?= photo_e($item['name']) ?>
+            </div>
+
+            <?php if ($timestamp !== null): ?>
+
+                <div class="date-prise-vue">
+                    <?= photo_e(date('d/m/Y H:i:s', $timestamp)) ?>
+                </div>
+
+            <?php endif; ?>
+
+            <?php
+            photo_bouton_telecharger(
+                $item['path'],
+                $csrfToken
+            );
+            ?>
+
+        </div>
 
     <?php endforeach; ?>
 
 </section>
 
 
+
 </main>
+
+<!-- NAVIGATION CHRONOLOGIQUE -->
+
+<div id="timeline" class="timeline">
+
+    <div class="timeline-date" id="timelineDate">
+        --
+    </div>
+
+    <input
+        type="range"
+        id="timelineSlider"
+        min="0"
+        max="0"
+        value="0"
+        step="1"
+        orient="vertical"
+        aria-label="Navigation chronologique"
+    >
+
+    <div class="timeline-label">
+        Temps
+    </div>
+
+</div>
+
 
 <div id="lightbox" class="lightbox">
 
@@ -293,6 +393,7 @@ $parts = $folder === ''
 
 <script src="assets/js/app.js"></script>
 <script src="assets/js/download.js"></script>
+<script src="assets/js/timeline.js"></script>
 
 
     <div id="zipProgress" class="zip-progress" hidden>
