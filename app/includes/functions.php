@@ -81,6 +81,107 @@ function photo_is_video(string $file): bool
 }
 
 /**
+ * Récupère la date de prise de vue d'une photo ou vidéo.
+ *
+ * Retourne une date au format YYYY-MM-DD HH:MM:SS.
+ */
+function photo_get_date_taken(string $path): ?string
+{
+    // Vérification du fichier
+    if (!is_file($path)) {
+        return null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PHOTOS : MÉTADONNÉES EXIF
+    |--------------------------------------------------------------------------
+    */
+
+    if (photo_is_image($path) && function_exists('exif_read_data')) {
+
+        try {
+
+            $exif = @exif_read_data($path, 'EXIF', true);
+
+            if (is_array($exif)) {
+
+                $date = $exif['EXIF']['DateTimeOriginal']
+                    ?? $exif['EXIF']['DateTimeDigitized']
+                    ?? $exif['IFD0']['DateTime']
+                    ?? null;
+
+                if (
+                    is_string($date)
+                    && $date !== ''
+                ) {
+                    $timestamp = strtotime(
+                        str_replace(':', '-', substr($date, 0, 10))
+                        . substr($date, 10)
+                    );
+
+                    if ($timestamp !== false) {
+                        return date('Y-m-d H:i:s', $timestamp);
+                    }
+                }
+            }
+
+        } catch (Throwable $exception) {
+
+            error_log(
+                'Erreur lecture EXIF : '
+                . $exception->getMessage()
+            );
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VIDÉOS : FFPROBE
+    |--------------------------------------------------------------------------
+    */
+
+    if (photo_is_video($path)) {
+
+        $ffprobe = defined('PHOTO_FFPROBE')
+            ? PHOTO_FFPROBE
+            : 'ffprobe';
+
+        $commande = escapeshellarg($ffprobe)
+            . ' -v quiet'
+            . ' -show_entries format_tags=creation_time'
+            . ' -of default=noprint_wrappers=1:nokey=1 '
+            . escapeshellarg($path);
+
+        $resultat = @shell_exec($commande);
+
+        if (is_string($resultat) && trim($resultat) !== '') {
+
+            $timestamp = strtotime(trim($resultat));
+
+            if ($timestamp !== false) {
+                return date('Y-m-d H:i:s', $timestamp);
+            }
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SOLUTION DE REPLI : DATE DU FICHIER
+    |--------------------------------------------------------------------------
+    */
+
+    $mtime = filemtime($path);
+
+    if ($mtime !== false) {
+        return date('Y-m-d H:i:s', $mtime);
+    }
+
+    return null;
+}
+
+
+/**
  * Retourne le contenu d'un dossier.
  */
 function photo_list_uncached(string $relative): array
@@ -146,6 +247,7 @@ function photo_list_uncached(string $relative): array
                     ? 'video'
                     : 'image',
                 'size' => filesize($path),
+                'date_taken' => photo_get_date_taken($path),
             ];
         }
     }
