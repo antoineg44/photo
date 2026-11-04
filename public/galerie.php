@@ -102,6 +102,12 @@ require_once __DIR__ . '/../app/includes/functions.php';
 
 $folder = (string) ($_GET['dossier'] ?? '');
 
+$view = $_GET['vue'] ?? 'dossiers';
+
+if (!in_array($view, ['dossiers', 'chronologique'], true)) {
+    $view = 'dossiers';
+}
+
 $directory = photo_resolve($folder);
 
 if ($directory === null || !is_dir($directory)) {
@@ -111,48 +117,73 @@ if ($directory === null || !is_dir($directory)) {
 
 /*
 |--------------------------------------------------------------------------
-| RÉCUPÉRATION RÉCURSIVE DES MÉDIAS
+| VUE PAR DOSSIERS
 |--------------------------------------------------------------------------
 */
 
-$items = [];
+if ($view === 'dossiers') {
 
-$collectMedia = function (string $relative) use (&$collectMedia, &$items): void {
+    $items = photo_list($folder);
 
-    $elements = photo_list($relative);
+}
+/*
+|--------------------------------------------------------------------------
+| VUE CHRONOLOGIQUE
+|--------------------------------------------------------------------------
+*/
 
-    foreach ($elements as $element) {
+else {
 
-        if ($element['type'] === 'directory') {
+    $items = [];
 
-            // Explorer les sous-dossiers
-            $collectMedia($element['path']);
+    $collectMedia = function (string $relative) use (&$collectMedia, &$items): void {
 
-            continue;
-        }
+        foreach (photo_list($relative) as $element) {
 
-        // Récupération de la date de prise de vue
-        $dateTaken = $element['date_taken'] ?? null;
+            if ($element['type'] === 'directory') {
 
-        $timestamp = null;
+                $collectMedia($element['path']);
 
-        if (is_string($dateTaken) && $dateTaken !== '') {
-
-            $parsed = strtotime($dateTaken);
-
-            if ($parsed !== false) {
-                $timestamp = $parsed;
+                continue;
             }
+
+            $dateTaken = $element['date_taken'] ?? null;
+
+            $timestamp = null;
+
+            if (is_string($dateTaken) && $dateTaken !== '') {
+
+                $parsed = strtotime($dateTaken);
+
+                if ($parsed !== false) {
+                    $timestamp = $parsed;
+                }
+            }
+
+            $element['timestamp'] = $timestamp;
+
+            $items[] = $element;
+        }
+    };
+
+    $collectMedia($folder);
+
+    usort($items, static function ($a, $b) {
+
+        $dateA = $a['timestamp'] ?? null;
+        $dateB = $b['timestamp'] ?? null;
+
+        if ($dateA === null && $dateB !== null) {
+            return 1;
         }
 
-        $element['timestamp'] = $timestamp;
+        if ($dateB === null && $dateA !== null) {
+            return -1;
+        }
 
-        $items[] = $element;
-    }
-};
-
-// Lancement de la recherche depuis le dossier courant
-$collectMedia($folder);
+        return ($dateA ?? 0) <=> ($dateB ?? 0);
+    });
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -352,6 +383,25 @@ $parts = $folder === ''
 
 
 </main>
+
+<div class="view-selector">
+
+    <a
+        href="?vue=dossiers&amp;dossier=<?= rawurlencode($folder) ?>"
+        class="view-button <?= $view === 'dossiers' ? 'active' : '' ?>"
+    >
+        📁 Vue par dossiers
+    </a>
+
+    <a
+        href="?vue=chronologique&amp;dossier=<?= rawurlencode($folder) ?>"
+        class="view-button <?= $view === 'chronologique' ? 'active' : '' ?>"
+    >
+        📅 Vue chronologique
+    </a>
+
+</div>
+
 
 <!-- NAVIGATION CHRONOLOGIQUE -->
 
