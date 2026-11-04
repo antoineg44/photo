@@ -55,6 +55,18 @@ if (!$autorise) {
 
 /*
 |--------------------------------------------------------------------------
+| LIBÉRATION DU VERROU DE SESSION
+|--------------------------------------------------------------------------
+*/
+
+// L'authentification est terminée.
+// Les scripts suivants n'ont plus besoin de modifier la session.
+
+session_write_close();
+
+
+/*
+|--------------------------------------------------------------------------
 | FONCTIONS
 |--------------------------------------------------------------------------
 */
@@ -351,18 +363,18 @@ if ($range !== '') {
         }
     }
 
-    if (
-        $start >= $size
-        || $end < $start
-        || $end >= $size
-    ) {
+    if ($start >= $size || $end < $start) {
 
-        http_response_code(416);
+    http_response_code(416);
 
-        header('Content-Range: bytes */' . $size);
+    header('Content-Range: bytes */' . $size);
 
-        exit;
-    }
+    exit;
+}
+
+// Ajustement de la fin à la taille réelle.
+$end = min($end, $size - 1);
+
 
     http_response_code(206);
 
@@ -413,9 +425,21 @@ if (fseek($handle, $start) !== 0) {
 |--------------------------------------------------------------------------
 */
 
-while ($length > 0 && !feof($handle)) {
+// Désactivation des buffers PHP pour le streaming.
+@ini_set('output_buffering', '0');
+@ini_set('zlib.output_compression', '0');
 
-    $chunkSize = min(1024 * 1024, $length);
+// Ne pas interrompre la transmission pour une durée excessive.
+set_time_limit(0);
+
+// Nettoyage des éventuels buffers.
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+while ($length > 0) {
+
+    $chunkSize = min(256 * 1024, $length);
 
     $buffer = fread($handle, $chunkSize);
 
