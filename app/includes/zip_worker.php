@@ -173,13 +173,28 @@ try {
 
     $total = 0;
 
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator(
-            $source,
-            FilesystemIterator::SKIP_DOTS
-        ),
-        RecursiveIteratorIterator::LEAVES_ONLY
-    );
+ $directoryIterator = new RecursiveDirectoryIterator(
+    $source,
+    FilesystemIterator::SKIP_DOTS
+);
+
+$filter = new RecursiveCallbackFilterIterator(
+    $directoryIterator,
+    function ($current) {
+
+        if ($current->isDir() && $current->getFilename() === '@eaDir') {
+            return false;
+        }
+
+        return true;
+    }
+);
+
+$iterator = new RecursiveIteratorIterator(
+    $filter,
+    RecursiveIteratorIterator::LEAVES_ONLY
+);
+
 
     foreach ($iterator as $file) {
 
@@ -245,13 +260,28 @@ try {
 
     zipUpdate($job);
 
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator(
-            $source,
-            FilesystemIterator::SKIP_DOTS
-        ),
-        RecursiveIteratorIterator::LEAVES_ONLY
-    );
+    $directoryIterator = new RecursiveDirectoryIterator(
+    $source,
+    FilesystemIterator::SKIP_DOTS
+);
+
+$filter = new RecursiveCallbackFilterIterator(
+    $directoryIterator,
+    function ($current) {
+
+        if ($current->isDir() && $current->getFilename() === '@eaDir') {
+            return false;
+        }
+
+        return true;
+    }
+);
+
+$iterator = new RecursiveIteratorIterator(
+    $filter,
+    RecursiveIteratorIterator::LEAVES_ONLY
+);
+
 
     foreach ($iterator as $file) {
 
