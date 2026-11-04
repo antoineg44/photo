@@ -1,0 +1,154 @@
+/* GALERIE CHRONOLOGIQUE */
+
+.date-separator {
+    grid-column: 1 / -1;
+
+    font-size: 18px;
+    font-weight: 700;
+
+    padding: 15px 0 5px;
+    margin-top: 15px;
+
+    border-bottom: 1px solid #ddd;
+
+    color: #333;
+}
+
+.date-prise-vue {
+    font-size: 11px;
+    color: #888;
+    margin-top: 5px;
+}
+
+
+/* BARRE TEMPORELLE */
+
+.timeline {
+    position: fixed;
+
+    right: 12px;
+    top: 100px;
+    bottom: 40px;
+
+    width: 35px;
+
+    z-index: 5000;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    opacity: 0.35;
+
+    transition: opacity 0.2s;
+
+    pointer-events: none;
+}
+
+.timeline:hover,
+.timeline.active {
+    opacity: 1;
+}
+
+.timeline input {
+    pointer-events: auto;
+
+    writing-mode: vertical-lr;
+    direction: rtl;
+
+    appearance: none;
+
+    width: 8px;
+    height: 100%;
+
+    margin: 10px 0;
+
+    background: #bbb;
+
+    border-radius: 10px;
+
+    cursor: pointer;
+}
+
+.timeline input::-webkit-slider-thumb {
+    appearance: none;
+
+    width: 18px;
+    height: 18px;
+
+    border-radius: 50%;
+
+    background: #2563eb;
+
+    border: 2px solid white;
+
+    box-shadow: 0 0 5px #0005;
+}
+
+.timeline input::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+
+    border-radius: 50%;
+
+    background: #2563eb;
+
+    border: 2px solid white;
+
+    box-shadow: 0 0 5px #0005;
+}
+
+.timeline-date {
+    pointer-events: none;
+
+    position: absolute;
+
+    right: 45px;
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    background: #1f2937;
+    color: white;
+
+    padding: 9px 12px;
+
+    border-radius: 6px;
+
+    white-space: nowrap;
+
+    font-size: 12px;
+
+    opacity: 0;
+
+    transition: opacity 0.15s;
+}
+
+.timeline:hover .timeline-date,
+.timeline.active .timeline-date {
+    opacity: 1;
+}
+
+.timeline-label {
+    font-size: 10px;
+    color: #666;
+
+    pointer-events: none;
+}
+
+
+/* ADAPTATION MOBILE */
+
+@media (max-width: 600px) {
+
+    .timeline {
+        right: 3px;
+        width: 25px;
+    }
+
+    .timeline-date {
+        right: 30px;
+        font-size: 10px;
+    }
+
+}
