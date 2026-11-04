@@ -1,9 +1,5 @@
 <?php
 declare(strict_types=1);
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-
 
 $isHttps = isset($_SERVER['HTTPS'])
     && $_SERVER['HTTPS'] !== 'off';
@@ -18,169 +14,10 @@ session_set_cookie_params([
 
 session_start();
 
-require_once '/var/www/compte/config/database.php';
-require_once '/var/www/compte/config/services.php';
-
 if (!isset($_SESSION['utilisateur_id'])) {
     header('Location: connexion.php');
     exit;
 }
-
-function photo_e(string $valeur): string
-{
-    return htmlspecialchars(
-        $valeur,
-        ENT_QUOTES,
-        'UTF-8'
-    );
-}
-
-function photo_bouton_telecharger(
-    string $chemin,
-    string $csrfToken
-): void {
-    ?>
-    <form method="POST" action="download.php" class="form-telecharger">
-
-        <input
-            type="hidden"
-            name="csrf_token"
-            value="<?= photo_e($csrfToken) ?>"
-        >
-
-        <input
-            type="hidden"
-            name="file"
-            value="<?= photo_e($chemin) ?>"
-        >
-
-        <button type="submit" class="bouton-telecharger">
-            ⬇ Télécharger
-        </button>
-
-    </form>
-    <?php
-}
-
-
-$identifiant = (string) (
-    $_SESSION['utilisateur_identifiant'] ?? ''
-);
-$photoIdentifiant = $identifiant;
-
-$csrfToken = $_SESSION['csrf_token'] ?? '';
-
-if (!is_string($csrfToken) || $csrfToken === '') {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    $csrfToken = $_SESSION['csrf_token'];
-}
-
-try {
-    $autorise = utilisateurAAccesService(
-        $pdo,
-        (int) $_SESSION['utilisateur_id'],
-        'photo'
-    );
-
-} catch (Throwable $exception) {
-
-    error_log(
-        'Erreur de vérification des droits photo : '
-        . $exception->getMessage()
-    );
-
-    http_response_code(500);
-    exit('Impossible de vérifier vos autorisations.');
-}
-
-if (!$autorise) {
-    http_response_code(403);
-    exit('Accès non autorisé au service photo.');
-}
-
-require_once __DIR__ . '/../app/includes/functions.php';
-
-$folder = (string) ($_GET['dossier'] ?? '');
-
-$directory = photo_resolve($folder);
-
-if ($directory === null || !is_dir($directory)) {
-    http_response_code(404);
-    exit('Répertoire introuvable.');
-}
-
-/*
-|--------------------------------------------------------------------------
-| RÉCUPÉRATION RÉCURSIVE DES MÉDIAS
-|--------------------------------------------------------------------------
-*/
-
-$items = [];
-
-$collectMedia = function (string $relative) use (&$collectMedia, &$items): void {
-
-    $elements = photo_list($relative);
-
-    foreach ($elements as $element) {
-
-        if ($element['type'] === 'directory') {
-
-            // Explorer les sous-dossiers
-            $collectMedia($element['path']);
-
-            continue;
-        }
-
-        // Récupération de la date de prise de vue
-        $dateTaken = $element['date_taken'] ?? null;
-
-        $timestamp = null;
-
-        if (is_string($dateTaken) && $dateTaken !== '') {
-
-            $parsed = strtotime($dateTaken);
-
-            if ($parsed !== false) {
-                $timestamp = $parsed;
-            }
-        }
-
-        $element['timestamp'] = $timestamp;
-
-        $items[] = $element;
-    }
-};
-
-// Lancement de la recherche depuis le dossier courant
-$collectMedia($folder);
-
-/*
-|--------------------------------------------------------------------------
-| TRI CHRONOLOGIQUE
-|--------------------------------------------------------------------------
-*/
-
-usort($items, static function ($a, $b) {
-
-    $dateA = $a['timestamp'] ?? null;
-    $dateB = $b['timestamp'] ?? null;
-
-    // Les médias sans date sont placés à la fin
-    if ($dateA === null && $dateB !== null) {
-        return 1;
-    }
-
-    if ($dateB === null && $dateA !== null) {
-        return -1;
-    }
-
-    return ($dateA ?? 0) <=> ($dateB ?? 0);
-});
-
-$parts = $folder === ''
-    ? []
-    : explode('/', $folder);
-
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -192,269 +29,275 @@ $parts = $folder === ''
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
 
-<title>Galerie Photos</title>
+<title>Ma galerie Photos</title>
 
-<link rel="stylesheet"
-      href="assets/css/style.css">
-<link rel="stylesheet" href="assets/css/timeline.css">
+<style>
 
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+
+    margin: 0;
+    padding: 0;
+
+    overflow: hidden;
+
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+}
+
+/* IFRAME */
+
+#galerieFrame {
+    display: block;
+
+    width: 100%;
+    height: 100%;
+
+    border: none;
+
+    opacity: 0;
+
+    transition: opacity 0.3s ease;
+}
+
+#galerieFrame.loaded {
+    opacity: 1;
+}
+
+/* LOADER */
+
+#loader {
+    position: fixed;
+
+    inset: 0;
+
+    z-index: 9999;
+
+    display: flex;
+    flex-direction: column;
+
+    justify-content: center;
+    align-items: center;
+
+    background: #f5f5f5;
+
+    transition: opacity 0.3s ease;
+}
+
+.spinner {
+    width: 55px;
+    height: 55px;
+
+    border: 5px solid #ddd;
+    border-top-color: #2563eb;
+
+    border-radius: 50%;
+
+    animation: rotation 0.8s linear infinite;
+}
+
+@keyframes rotation {
+
+    to {
+        transform: rotate(360deg);
+    }
+
+}
+
+.loader-text {
+    margin-top: 20px;
+
+    font-size: 15px;
+
+    color: #555;
+}
+
+/* ERREUR */
+
+#loaderError {
+    display: none;
+
+    margin-top: 20px;
+
+    text-align: center;
+}
+
+#loaderError button {
+    padding: 10px 18px;
+
+    border: none;
+    border-radius: 6px;
+
+    background: #2563eb;
+    color: white;
+
+    cursor: pointer;
+}
+
+#loader.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+</style>
 
 </head>
 
 <body>
 
-<header>
+<!-- LOADER -->
 
-    <div class="logo">
-        📷 Ma galerie
+<div id="loader">
+
+    <div class="spinner"></div>
+
+    <div class="loader-text" id="loaderText">
+        Chargement de votre galerie...
     </div>
 
-    <div class="utilisateur">
+    <div id="loaderError">
 
-        <?= photo_e($photoIdentifiant) ?>
+        <p>Impossible de charger la galerie.</p>
 
-        <form method="POST"
-              action="<?= photo_e(PHOTO_LOGOUT_URL) ?>">
+        <button onclick="chargerGalerie()">
+            Réessayer
+        </button>
 
-            <input type="hidden"
-                   name="csrf_token"
-                   value="<?= photo_e($csrfToken) ?>">
-
-            <button type="submit">
-                Déconnexion
-            </button>
-
-        </form>
-
-    </div>
-
-</header>
-
-<main>
-
-    <nav class="breadcrumb">
-
-        <a href="index.php">Accueil</a>
-
-        <?php $current = ''; ?>
-
-        <?php foreach ($parts as $part): ?>
-
-            <?php $current .= ($current === '' ? '' : '/') . $part; ?>
-
-            <span> / </span>
-
-            <a href="?dossier=<?= rawurlencode($current) ?>">
-                <?= photo_e($part) ?>
-            </a>
-
-        <?php endforeach; ?>
-
-    </nav>
-
-    <section class="galerie" id="galerie">
-
-    <?php if (empty($items)): ?>
-
-        <p class="vide">
-            Aucun média dans ce répertoire.
-        </p>
-
-    <?php endif; ?>
-
-    <?php
-    $previousDay = null;
-    ?>
-
-    <?php foreach ($items as $item): ?>
-
-        <?php
-
-        $timestamp = $item['timestamp'] ?? null;
-
-        $currentDay = $timestamp !== null
-            ? date('Y-m-d', $timestamp)
-            : 'sans-date';
-
-        ?>
-
-        <?php if ($currentDay !== $previousDay): ?>
-
-            <div class="date-separator">
-
-                <?= $timestamp !== null
-                    ? photo_e(date('d/m/Y', $timestamp))
-                    : 'Date inconnue' ?>
-
-            </div>
-
-            <?php $previousDay = $currentDay; ?>
-
-        <?php endif; ?>
-
-        <div
-            class="element media"
-            data-timestamp="<?= $timestamp ?? '' ?>"
-        >
-
-            <a
-                href="media.php?type=player&amp;file=<?= rawurlencode($item['path']) ?>"
-                class="media-link"
-                <?= $item['type'] === 'image'
-                    ? 'data-image="1"'
-                    : '' ?>
-            >
-
-                <?php if ($item['type'] === 'image'): ?>
-
-                    <img
-                        src="media.php?type=thumb&amp;file=<?= rawurlencode($item['path']) ?>"
-                        loading="lazy"
-                        alt="<?= photo_e($item['name']) ?>"
-                    >
-
-                <?php else: ?>
-
-                    <div class="video-preview">
-                        <span>▶</span>
-                        <small>VIDÉO</small>
-                    </div>
-
-                <?php endif; ?>
-
-            </a>
-
-            <div class="nom">
-                <?= photo_e($item['name']) ?>
-            </div>
-
-            <?php if ($timestamp !== null): ?>
-
-                <div class="date-prise-vue">
-                    <?= photo_e(date('d/m/Y H:i:s', $timestamp)) ?>
-                </div>
-
-            <?php endif; ?>
-
-            <?php
-            photo_bouton_telecharger(
-                $item['path'],
-                $csrfToken
-            );
-            ?>
-
-        </div>
-
-    <?php endforeach; ?>
-
-</section>
-
-
-
-</main>
-
-<!-- NAVIGATION CHRONOLOGIQUE -->
-
-<div id="timeline" class="timeline">
-
-    <div class="timeline-date" id="timelineDate">
-        --
-    </div>
-
-    <input
-        type="range"
-        id="timelineSlider"
-        min="0"
-        max="0"
-        value="0"
-        step="1"
-        orient="vertical"
-        aria-label="Navigation chronologique"
-    >
-
-    <div class="timeline-label">
-        Temps
     </div>
 
 </div>
 
 
-<div id="lightbox" class="lightbox">
+<!-- GALERIE INDÉPENDANTE -->
 
-    <button id="fermer">×</button>
-
-    <button id="precedent">❮</button>
-
-    <img id="imageGrande" src="" alt="">
-
-    <button id="suivant">❯</button>
-
-</div>
-
-<script src="assets/js/app.js"></script>
-<script src="assets/js/download.js"></script>
-<script src="assets/js/timeline.js"></script>
+<iframe
+    id="galerieFrame"
+    src="galerie.php"
+    title="Galerie photos"
+    loading="eager"
+></iframe>
 
 
-    <div id="zipProgress" class="zip-progress" hidden>
+<script>
 
-    <h3>📦 Création de l'archive</h3>
+const frame = document.getElementById('galerieFrame');
+const loader = document.getElementById('loader');
 
-    <p id="zipMessage">Préparation...</p>
+const loaderText = document.getElementById('loaderText');
+const loaderError = document.getElementById('loaderError');
 
-    <progress id="zipBar" value="0" max="100"></progress>
+let timeoutChargement;
 
-    <p id="zipPercent">0 %</p>
+let charge = false;
 
-    <p id="zipFiles">0 fichier</p>
 
-    <button type="button" id="cancelZip">
-        ✖ Annuler
-    </button>
+/*
+|--------------------------------------------------------------------------
+| CHARGEMENT TERMINÉ
+|--------------------------------------------------------------------------
+*/
 
-    <a id="downloadZip" hidden>
-        ⬇ Télécharger le ZIP
-    </a>
+function galerieChargee() {
 
-</div>
+    charge = true;
 
-<style>
-.zip-progress {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 9999;
-    width: min(350px, calc(100% - 40px));
-    padding: 20px;
-    background: #1f2937;
-    color: white;
-    border-radius: 12px;
-    box-shadow: 0 5px 25px #0005;
+    clearTimeout(timeoutChargement);
+
+    frame.classList.add('loaded');
+
+    loader.classList.add('hidden');
+
+    setTimeout(function () {
+
+        loader.style.display = 'none';
+
+    }, 350);
+
 }
 
-.zip-progress progress {
-    width: 100%;
-    height: 18px;
-    margin: 12px 0;
+
+/*
+|--------------------------------------------------------------------------
+| ERREUR DE CHARGEMENT
+|--------------------------------------------------------------------------
+*/
+
+function erreurChargement() {
+
+    if (charge) {
+        return;
+    }
+
+    clearTimeout(timeoutChargement);
+
+    loaderText.style.display = 'none';
+
+    loaderError.style.display = 'block';
+
 }
 
-.zip-progress button,
-.zip-progress a {
-    display: inline-block;
-    padding: 10px 15px;
-    margin-top: 10px;
-    border: 0;
-    border-radius: 6px;
-    cursor: pointer;
-    background: #ef4444;
-    color: white;
-    text-decoration: none;
+
+/*
+|--------------------------------------------------------------------------
+| NOUVEAU CHARGEMENT
+|--------------------------------------------------------------------------
+*/
+
+function chargerGalerie() {
+
+    charge = false;
+
+    loader.style.display = 'flex';
+    loader.classList.remove('hidden');
+
+    loaderText.style.display = 'block';
+    loaderText.textContent = 'Chargement de votre galerie...';
+
+    loaderError.style.display = 'none';
+
+    frame.classList.remove('loaded');
+
+    clearTimeout(timeoutChargement);
+
+    timeoutChargement = setTimeout(
+        erreurChargement,
+        60000
+    );
+
+    frame.src = 'galerie.php?t=' + Date.now();
+
 }
 
-.zip-progress a {
-    background: #10b981;
-}
-</style>
+
+/*
+|--------------------------------------------------------------------------
+| ÉVÉNEMENTS
+|--------------------------------------------------------------------------
+*/
+
+frame.addEventListener('load', galerieChargee);
+
+frame.addEventListener('error', erreurChargement);
+
+
+/*
+|--------------------------------------------------------------------------
+| DÉLAI MAXIMUM
+|--------------------------------------------------------------------------
+*/
+
+timeoutChargement = setTimeout(
+    erreurChargement,
+    60000
+);
+
+</script>
 
 </body>
 </html>
