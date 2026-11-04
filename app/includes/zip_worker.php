@@ -465,7 +465,7 @@ clearstatcache(true, $archive);
 
 if (!is_file($archive)) { throw new RuntimeException('Le fichier ZIP est introuvable.'); }
 
-tailleArchive=filesize(archive);
+$tailleArchive=filesize(archive);
 
 if ($tailleArchive === false || $tailleArchive === 0) { throw new RuntimeException('Le fichier ZIP est vide.'); }
 
